@@ -6,6 +6,11 @@ import os
 import subprocess 
 from yt_dlp.utils import download_range_func
 import sys
+
+# --- SMART CLOUD DETECTOR ---
+# Check karna ke app laptop par hai ya Streamlit Cloud par
+is_cloud = os.getenv('STREAMLIT_RUNTIME_ENV_GCP') == 'true' or os.getenv('HOSTNAME', '').startswith('streamlit')
+
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Pro YT Downloader", page_icon="🎬", layout="centered")
 
@@ -75,13 +80,12 @@ if st.button("🔍 FETCH QUALITIES", use_container_width=True):
     else:
         with st.status("Scanning YouTube for available qualities... ⏳", expanded=True) as status:
             try:
-                ydl_opts = {
-                'quiet': True, 
-                'no_warnings': True, 
-                'extract_flat': 'in_playlist',
-                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
-                }
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Bypass logic based on Cloud/Local
+                info_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
+                if is_cloud:
+                    info_opts['extractor_args'] = {'youtube': {'player_client': ['android', 'web']}}
+                
+                with yt_dlp.YoutubeDL(info_opts) as ydl:
                     info_dict = ydl.extract_info(url, download=False)
                     st.session_state.video_title = info_dict.get('title', 'Unknown Title/Playlist')
                     
@@ -130,7 +134,6 @@ if st.session_state.video_fetched:
     with opt_col2:
         clip_toggle = st.toggle("✂️ Trimming (Clip)")
     with opt_col3:
-        # NAYA AI TOGGLE
         karaoke_toggle = st.toggle("🎤 AI Karaoke Split", disabled=(format_choice != "Audio (MP3)"), help="Extracts Vocals & Beats. Works only on Audio (MP3).")
     
     start_time, end_time = "", ""
@@ -146,7 +149,6 @@ if st.session_state.video_fetched:
     st.write("")
 
     if st.button("🚀 START DOWNLOAD", use_container_width=True):
-        
         if clip_toggle:
             start_sec = time_to_seconds(start_time)
             end_sec = time_to_seconds(end_time)
@@ -165,20 +167,16 @@ if st.session_state.video_fetched:
                     if current_time - last_update[0] > 0.5:
                         total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
                         downloaded = d.get('downloaded_bytes', 0)
-                        
                         percent = downloaded / total if total > 0 else 0.0 
                         percent = max(0.0, min(1.0, float(percent)))
                         progress_bar.progress(percent)
-                        
                         raw_speed = str(d.get('_speed_str', 'N/A'))
                         raw_eta = str(d.get('_eta_str', 'N/A'))
                         raw_percent = str(d.get('_percent_str', f"{int(percent*100)}%"))
-                        
                         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
                         speed = ansi_escape.sub('', raw_speed).strip()
                         eta = ansi_escape.sub('', raw_eta).strip()
                         percent_str = ansi_escape.sub('', raw_percent).strip()
-                        
                         stats_text.markdown(f"<div class='stats-box'>🚀 Speed: {speed} &nbsp;|&nbsp; ⏳ ETA: {eta} &nbsp;|&nbsp; 📊 Done: {percent_str}</div>", unsafe_allow_html=True)
                         last_update[0] = current_time 
                 except Exception:
@@ -187,18 +185,12 @@ if st.session_state.video_fetched:
                 progress_bar.progress(1.0)
                 stats_text.markdown("<div class='stats-box' style='color: yellow;'>✅ Download 100%! Processing... ⏳</div>", unsafe_allow_html=True)
 
-        clip_msg = f" (Clipping from {start_time} to {end_time})" if clip_toggle and not is_playlist else ""
-        playlist_msg = " [PLAYLIST MODE]" if is_playlist else ""
-
-        with st.status(f"Downloading in {selected_res_str}{playlist_msg}{clip_msg}... Please wait! ⏳", expanded=True) as status:
+        with st.status("Downloading... Please wait! ⏳", expanded=True) as status:
             try:
-                if is_playlist:
-                    output_template = '%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s'
-                else:
-                    output_template = '%(title)s.%(ext)s'
-
+                output_template = '%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s' if is_playlist else '%(title)s.%(ext)s'
                 selected_height = selected_res_str.replace("p", "") if selected_res_str != "Best" else "1080"
                 
+                # Dynamic Format Selection
                 if format_choice == "Audio (MP3)":
                     selected_format = 'bestaudio/best'
                     my_postprocessors = [
@@ -208,29 +200,31 @@ if st.session_state.video_fetched:
                     ]
                     write_thumb = True 
                 else:
-                    if selected_res_str == "Best":
-                        selected_format = 'best'
-                    else:
+                    if is_cloud:
+                        # Cloud par safe quality limit
                         selected_format = f'bestvideo[height<={selected_height}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+                    else:
+                        # Local par Full High Quality (2K/4K)
+                        selected_format = f'bestvideo[height<={selected_height}]+bestaudio/best[height<={selected_height}]' if selected_res_str != "Best" else "bestvideo+bestaudio/best"
+                    
                     my_postprocessors = [{'key': 'FFmpegMetadata', 'add_metadata': True}]
                     write_thumb = False 
 
                 ydl_opts = {
-                    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
                     'outtmpl': output_template, 
                     'noplaylist': not is_playlist, 
                     'format': selected_format,
                     'quiet': True,
                     'no_warnings': True,
-                    'socket_timeout': 60,
-                    'retries': 15,
-                    'fragment_retries': 15,
                     'progress_hooks': [my_hook],
                     'writethumbnail': write_thumb, 
                     'postprocessors': my_postprocessors 
                 }
 
-                # 1. DOWNLOAD STEP
+                # Bypass on Cloud
+                if is_cloud:
+                    ydl_opts['extractor_args'] = {'youtube': {'player_client': ['android', 'web']}}
+
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info_dict = ydl.extract_info(url, download=True)
                     raw_filename = ydl.prepare_filename(info_dict)
@@ -239,9 +233,8 @@ if st.session_state.video_fetched:
                 actual_ext = ".mp3" if format_choice == "Audio (MP3)" else ".mp4"
                 final_filename = base + actual_ext
                 
-                # 2. LOCAL TRIMMING (Agar ON hai)
+                # LOCAL TRIMMING
                 if clip_toggle and not is_playlist:
-                    stats_text.markdown("<div class='stats-box' style='color: #00FFCC;'>✂️ Applying Local Fast-Trim... ⏳</div>", unsafe_allow_html=True)
                     trimmed_filename = base + "_trimmed" + actual_ext
                     cmd = ['ffmpeg', '-y', '-i', final_filename, '-ss', start_time, '-to', end_time, '-c', 'copy', trimmed_filename]
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -249,27 +242,14 @@ if st.session_state.video_fetched:
                         os.remove(final_filename)
                         os.rename(trimmed_filename, final_filename)
                         
-                # 3. AI KARAOKE SPLITTER (Agar ON hai aur MP3 hai)
-                ai_msg = ""
+                # AI KARAOKE
                 if karaoke_toggle and format_choice == "Audio (MP3)":
-                    stats_text.markdown("<div class='stats-box' style='color: #FF00FF;'>🤖 AI Splitting Vocals... (Check VS Code Terminal!) ⏳</div>", unsafe_allow_html=True)
-                    
-                    # Naya Safe Command (using sys.executable taake .venv sahi se chale)
-                    spleeter_cmd = [
-                        sys.executable, '-m', 'spleeter', 'separate', 
-                        '-p', 'spleeter:2stems', 
-                        '-o', 'AI_Karaoke_Tracks', 
-                        final_filename
-                    ]
-                    
-                    # DEVNULL hata diya! Ab VS Code ke terminal mein processing nazar aayegi
+                    spleeter_cmd = [sys.executable, '-m', 'spleeter', 'separate', '-p', 'spleeter:2stems', '-o', 'AI_Karaoke_Tracks', final_filename]
                     subprocess.run(spleeter_cmd)
-                    ai_msg = " + 🎤 AI Karaoke Splitted (Check 'AI_Karaoke_Tracks' Folder!)"
 
                 status.update(label="All Tasks Completed! 🎉", state="complete", expanded=False)
                 st.balloons() 
-                st.success(f"Successfully downloaded {selected_res_str} {format_choice}{playlist_msg}{clip_msg}{ai_msg}!")
-                stats_text.markdown("<div class='stats-box' style='color: #00FFCC;'>🎉 Job Done! Check your local folder.</div>", unsafe_allow_html=True)
+                st.success("Successfully downloaded!")
                 
             except Exception as e:
                 status.update(label="Download Failed! ❌", state="error", expanded=False)
