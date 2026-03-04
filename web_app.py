@@ -75,7 +75,12 @@ if st.button("🔍 FETCH QUALITIES", use_container_width=True):
     else:
         with st.status("Scanning YouTube for available qualities... ⏳", expanded=True) as status:
             try:
-                ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
+                ydl_opts = {
+                'quiet': True, 
+                'no_warnings': True, 
+                'extract_flat': 'in_playlist',
+                'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+                }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info_dict = ydl.extract_info(url, download=False)
                     st.session_state.video_title = info_dict.get('title', 'Unknown Title/Playlist')
@@ -211,6 +216,7 @@ if st.session_state.video_fetched:
                     write_thumb = False 
 
                 ydl_opts = {
+                    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
                     'outtmpl': output_template, 
                     'noplaylist': not is_playlist, 
                     'format': selected_format,
