@@ -1,4 +1,2 @@
 streamlit
 yt-dlp
-spleeter
-numpy<2
