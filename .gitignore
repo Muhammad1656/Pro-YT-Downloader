@@ -1,0 +1,13 @@
+# Virtual Environment ko ignore karo
+.venv/
+__pycache__/
+
+# Media aur AI files ko ignore karo
+*.mp3
+*.mp4
+*.wav
+*.m4a
+AI_Karaoke_Tracks/
+pretrained_models/
+# Tumhari purani test file ko ignore karo
+app.py
