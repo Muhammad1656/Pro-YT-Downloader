@@ -83,7 +83,7 @@ if st.button("🔍 FETCH QUALITIES", use_container_width=True):
                 info_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
                 if is_cloud:
                     # Smart Combo: TV client usually bypasses DRM/Login issues better
-                    info_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'mweb', 'web']}}
+                    info_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'mweb', 'ios']}}
                 
                 with yt_dlp.YoutubeDL(info_opts) as ydl:
                     info_dict = ydl.extract_info(url, download=False)
@@ -226,7 +226,7 @@ if st.session_state.video_fetched:
 
                 # Bypass on Cloud
                 if is_cloud:
-                    ydl_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'mweb', 'web']}}
+                    ydl_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'mweb', 'ios']}}
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info_dict = ydl.extract_info(url, download=True)
