@@ -8,7 +8,6 @@ from yt_dlp.utils import download_range_func
 import sys
 
 # --- SMART CLOUD DETECTOR ---
-# Check karna ke app laptop par hai ya Streamlit Cloud par
 is_cloud = os.getenv('STREAMLIT_RUNTIME_ENV_GCP') == 'true' or os.getenv('HOSTNAME', '').startswith('streamlit')
 
 # --- PAGE SETUP ---
@@ -83,7 +82,7 @@ if st.button("🔍 FETCH QUALITIES", use_container_width=True):
                 # Bypass logic based on Cloud/Local
                 info_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
                 if is_cloud:
-                    # CHANGED: android to ios, web to web_creator
+                    # Smart Combo: TV client usually bypasses DRM/Login issues better
                     info_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'mweb', 'web']}}
                 
                 with yt_dlp.YoutubeDL(info_opts) as ydl:
@@ -97,6 +96,7 @@ if st.button("🔍 FETCH QUALITIES", use_container_width=True):
                         formats = entries[0].get('formats', []) if entries[0] else []
                         
                     for f in formats:
+                        # DRM Protected files often don't have height or have restricted codecs
                         if f.get('vcodec') != 'none' and f.get('height'):
                             resolutions.add(f.get('height'))
                     
@@ -108,7 +108,10 @@ if st.button("🔍 FETCH QUALITIES", use_container_width=True):
                 status.update(label="Scanned Successfully! ✅", state="complete", expanded=False)
             except Exception as e:
                 status.update(label="Scan Failed! ❌", state="error", expanded=False)
-                st.error(f"Error: {e}")
+                if "DRM" in str(e):
+                    st.error("🚫 This video is DRM protected (Copyrighted). YouTube blocks downloading for this specific video.")
+                else:
+                    st.error(f"Error: {e}")
 
 # --- STEP 2: SHOW OPTIONS & DOWNLOAD ---
 if st.session_state.video_fetched:
@@ -202,10 +205,9 @@ if st.session_state.video_fetched:
                     write_thumb = True 
                 else:
                     if is_cloud:
-                        # Cloud par safe quality limit
+                        # Cloud par iOS/TV format for DRM bypass
                         selected_format = f'bestvideo[height<={selected_height}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
                     else:
-                        # Local par Full High Quality (2K/4K)
                         selected_format = f'bestvideo[height<={selected_height}]+bestaudio/best[height<={selected_height}]' if selected_res_str != "Best" else "bestvideo+bestaudio/best"
                     
                     my_postprocessors = [{'key': 'FFmpegMetadata', 'add_metadata': True}]
@@ -224,7 +226,6 @@ if st.session_state.video_fetched:
 
                 # Bypass on Cloud
                 if is_cloud:
-                    # CHANGED: android to ios, web to web_creator
                     ydl_opts['extractor_args'] = {'youtube': {'player_client': ['tv', 'mweb', 'web']}}
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -255,4 +256,7 @@ if st.session_state.video_fetched:
                 
             except Exception as e:
                 status.update(label="Download Failed! ❌", state="error", expanded=False)
-                st.error(f"Error details: {e}")
+                if "DRM" in str(e):
+                    st.error("🚫 DRM Protected: Is video ko YouTube ne lock kiya hua hai.")
+                else:
+                    st.error(f"Error details: {e}")
